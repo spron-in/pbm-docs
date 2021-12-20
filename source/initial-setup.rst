@@ -3,13 +3,6 @@
 Initial setup   
 ****************************************************************
 
-The following diagram shows the overview of the installation and setup steps: 
-
-.. uml:: _images/setup.puml
-   :align: center
-
-Refer to :ref:`install` for installation instructions. Remember to install |pbm-agent| on every server with a ``mongod`` node that is not an arbiter node.
-
 The setup steps are the following:
 
 1. :ref:`Configure authentication in MongoDB <authenticate>`
@@ -64,10 +57,10 @@ Create the ``pbm`` user on every replica set. In a sharded cluster, this means e
 
 .. note::
 
-   In a cluster run `db.getSiblingDB("config").shards.find({}, {"host": true,
-   "_id": false})` to list all the host+port lists for the shard
+   In a cluster run ``db.getSiblingDB("config").shards.find({}, {"host": true,
+   "_id": false})`` to list all the host+port lists for the shard
    replica sets. The replica set name at the *front* of these "host" strings will
-   have to be placed as a "/?replicaSet=xxxx" argument in the parameters part
+   have to be placed as a ``/?replicaSet=xxxx`` argument in the parameters part
    of the connection URI (see below).
 
 Set the MongoDB connection URI for ``pbm-agent``
@@ -77,36 +70,60 @@ A |pbm-agent| process connects to its localhost ``mongod`` node with a standalon
 
 The :file:`pbm-agent.service` systemd unit file includes the environment file. You set the MongoDB URI connection string for the  ``PBM_MONGODB_URI`` variable within the environment file.
 
-The environment file for Debian and Ubuntu is :file:`/etc/default/pbm-agent`. For Redhat and CentOS, it is :file:`/etc/sysconfig/pbm-agent`. 
+1. Create the environment file:
 
-Edit the environment file and specify MongoDB connection URI string for the ``pbm`` user to the local ``mongod`` node. For example, if ``mongod`` node listens on port 27018, the MongoDB connection URI string will be the following:
+   * The path for Debian and Ubuntu is :file:`/etc/default/pbm-agent`. 
+   * The path for RHEL and CentOS is :file:`/etc/sysconfig/pbm-agent`. 
+   
+#. In the environment file, specify MongoDB connection URI string for the ``pbm`` user to the local ``mongod`` node . For example, if ``mongod`` node listens on port 27018, the MongoDB connection URI string will be the following:
 
-.. code-block:: bash
+   .. code-block:: bash
 
-   PBM_MONGODB_URI="mongodb://pbmuser:secretpwd@localhost:27018"
+      PBM_MONGODB_URI="mongodb://pbmuser:secretpwd@localhost:27018"
 
-.. note:: 
+   .. important:: 
 
-   If the password includes special characters like ``#``, ``@``, ``/`` and so on, you must convert these characters using the `percent-encoding mechanism <https://datatracker.ietf.org/doc/html/rfc3986#section-2.1>`_ when passing them to |PBM|. For example, the password ``secret#pwd`` should be passed as follows in ``PBM_MONGODB_URI``:
+      If the password includes special characters like ``#``, ``@``, ``/`` and so on, you must convert these characters using the `percent-encoding mechanism <https://datatracker.ietf.org/doc/html/rfc3986#section-2.1>`_ when passing them to |PBM|. For example, the password ``secret#pwd`` should be passed as follows in ``PBM_MONGODB_URI``:
 
-   .. code-block:: text
+      .. code-block:: text
 
-      PBM_MONGODB_URI="mongodb://pbmuser:secret%23pwd@localhost:27018"
+         PBM_MONGODB_URI="mongodb://pbmuser:secret%23pwd@localhost:27018"
 
-Configure the service init script for every |pbm-agent|. 
-
-.. hint:: **How to find the environment file**
-
-   The path to the environment file is specified in the :file:`pbm-agent.service` systemd unit file. 
+#. Create the :file:`pbm-agent.service` systemd unit file. 
 
    In Ubuntu and Debian, the :file:`pbm-agent.service` systemd unit file is at the path :file:`/lib/systemd/system/pbm-agent.service`. 
 
-   In Red Hat and CentOS, the path to this
+   In RHEL and CentOS, the path to this
    file is :file:`/usr/lib/systemd/system/pbm-agent.service`.
-       
-   .. admonition:: Example of pbm-agent.service systemd unit file  
 
-      .. include:: .res/code-block/bash/systemd-unit-file.txt    
+#. In the :file:`pbm-agent.service` file, specify the following:
+   
+   .. code-block:: init
+
+      [Unit]
+      Description=pbm-agent
+      After=time-sync.target network.target
+
+      [Service]
+      EnvironmentFile=-/etc/default/pbm-agent
+      Type=simple
+      User=mongod
+      Group=mongod
+      PermissionsStartOnly=true
+      ExecStart=/usr/bin/pbm-agent
+
+      [Install]
+      WantedBy=multi-user.target
+       
+   .. note::
+
+      Make sure that the ``ExecStart`` directory includes the |PBM| binaries. Otherwise, copy them from the ``./bin`` directory of you installation path.
+
+#. Make systemd aware of the new service:
+   
+   .. code-block:: bash
+
+      $ sudo systemctl daemon-reload
 
 .. seealso::
 
@@ -154,11 +171,11 @@ The storage configuration itself is out of scope of the present document. We ass
 
    .. important::
 
-      When using a filesystem storage, verify that the user running |PBM| is the owner of the backup folder.
+      When using a filesystem storage, verify that the user running |PBM| is the owner of the backup directory. The recommended user is ``mongod``, so it should be the owner of the backup directory. 
 
       .. code-block:: bash
       
-         $ sudo chown pbm:pbm <backup_directory>
+         $ sudo chown mongod:mongod <backup_directory>
 
    See more examples in :ref:`pbm.config.example_yaml`.
 
@@ -177,33 +194,39 @@ To learn more about |PBM| configuration, see :ref:`pbm.config`.
 Start the |pbm-agent| process
 ==================================
 
-Start |pbm-agent| on every server with the ``mongod`` node installed. It is best to use the packaged service scripts to run |pbm-agent|. 
+Start |pbm-agent| on every server with the ``mongod`` node installed. It is best to use the service init scripts to run |pbm-agent|. 
 
 .. code-block:: bash
 
    $ sudo systemctl start pbm-agent
    $ sudo systemctl status pbm-agent
 
-E.g. Imagine you put configsvr nodes (listen port 27019) collocated on the same
-servers as the first shard's ``mongod`` nodes (listen port 27018, replica set name
-"sh1rs"). In this server there should be two 
-|pbm-agent| processes, one connected to the shard
-(e.g. "mongodb://username:password@localhost:27018/") and one to the configsvr
-node (e.g. "mongodb://username:password@localhost:27019/").
+.. admonition:: Example
+
+   Imagine you put configsvr nodes (listen port 27019) collocated on the same
+   servers as the first shard's ``mongod`` nodes (listen port 27018, replica set name
+   "sh1rs"). In this server there should be two 
+   |pbm-agent| processes, one connected to the shard
+   (e.g. "mongodb://username:password@localhost:27018/") and one to the configsvr
+   node (e.g. "mongodb://username:password@localhost:27019/").
 
 For reference, the following is an example of starting |pbm-agent| manually. The
-output is redirected to a file and the process is backgrounded. Alternatively
-you can run it on a shell terminal temporarily if you want to observe and/or
-debug the startup from the log messages.
+output is redirected to a file and the process is backgrounded. 
+
+.. attention::
+   
+   Start the ``pbm-agent`` as the ``mongod`` user. The ``pbm-agent`` requires write access to the MongoDB data directory to make physical restores.
+
 
 .. code-block:: bash
 
-   $ nohup pbm-agent --mongodb-uri "mongodb://username:password@localhost:27018/" > /data/mdb_node_xyz/pbm-agent.$(hostname -s).27018.log 2>&1 &
+   $ su mongod nohup pbm-agent --mongodb-uri "mongodb://username:password@localhost:27018/" > /data/mdb_node_xyz/pbm-agent.$(hostname -s).27018.log 2>&1 &
 
-.. tip::
-   
-   Running as the ``mongod`` user would be the most intuitive and convenient way.
-   But if you want it can be another user.
+Replace ``username`` and ``password`` with those of your ``pbm`` user. ``/data/mdb_node_xyz/``is the path where pbm-agent log files will be written. Make sure you have created this directory and granted write permissions to it for the ``mongod`` user. 
+
+Alternatively,
+you can run ``pbm-agent`` on a shell terminal temporarily if you want to observe and/or
+debug the startup from the log messages.
 
 .. _pbm-agent.log:
 
@@ -212,8 +235,7 @@ How to see the pbm-agent log
 
 With the packaged systemd service, the log output to stdout is captured by
 systemd's default redirection to systemd-journald. You can view it with the
-command below. See :command:`man journalctl` for useful options such as '--lines',
-'--follow', etc.
+command below. See :command:`man journalctl` for useful options such as ``--lines``, ``--follow``, etc.
 
 .. code-block:: bash
 
@@ -228,7 +250,7 @@ If you started |pbm-agent| manually, see the file you redirected stdout and stde
 to.
 
 When a message *"pbm agent is listening for the commands"* is printed to the
-|pbm-agent| log file, it confirms that it has connected to its ``mongod`` node successfully.
+``pbm-agent`` log file, ``pbm-agent`` confirms that it has connected to its ``mongod`` node successfully.
 
 
 .. include:: .res/replace.txt

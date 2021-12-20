@@ -62,9 +62,9 @@ copyright = 'Percona LLC and/or its affiliates 2009-2021'
 # built documents.
 #
 # The short X.Y version.
-version = '1.6'
+version = '2.0'
 # The full version, including alpha/beta/rc tags.
-release = "1"
+release = "2"
 release = ".".join([version, release])
 
 # PlantUML configuration settings
