@@ -40,7 +40,7 @@ Building from source code
 
 Building the project requires:
 
-- Go 1.11 or above
+- Go 1.15 or above
 - make
 - git
 - gcc
@@ -55,7 +55,7 @@ To build the project (from the project dir):
 
 .. code-block:: bash
 
-   $ git clone https://github.com/<your_name>/percona-backup-mongodb
+   $ git clone https://github.com/percona/percona-backup-mongodb
    $ cd percona-backup-mongodb && git checkout pbm_2.0
    $ make build
 
